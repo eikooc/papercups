@@ -2,42 +2,46 @@ import React from 'react';
 import {Box, Flex} from 'theme-ui';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
+import {capitalize} from 'lodash';
 import {Button, Modal, Paragraph, Text} from '../common';
 
 // TODO: create date utility methods so we don't have to do this everywhere
 dayjs.extend(utc);
 
-function CustomerMetadataSection({
+export const CustomerMetadataSection = ({
   metadata,
 }: {
   metadata: Record<string, string>;
-}) {
-  if (!metadata) {
-    return null;
-  }
-  return (
+}) => {
+  return !metadata ? null : (
     <React.Fragment>
-      <Box mb={2}>
+      <Box
+        mb={2}
+        py={2}
+        sx={{borderTop: '1px solid #f0f0f0', borderBottom: '1px solid #f0f0f0'}}
+      >
         <Box>
           <Text strong>Custom metadata</Text>
         </Box>
       </Box>
+
       <Flex sx={{justifyContent: 'space-between', flexWrap: 'wrap'}}>
-        {Object.entries(metadata).map(([title, value]) => {
+        {Object.entries(metadata).map(([key, value]: any) => {
+          const label = capitalize(key).split('_').join(' ');
           return (
-            <Box mb={2} sx={{flex: '0 50%'}} key={title}>
+            <Box mb={2} sx={{flex: '0 50%'}} key={key}>
               <Box>
-                <Text strong>{title}</Text>
+                <Text strong>{label}</Text>
               </Box>
 
-              <Paragraph>{value}</Paragraph>
+              <Paragraph>{value.toString()}</Paragraph>
             </Box>
           );
         })}
       </Flex>
     </React.Fragment>
   );
-}
+};
 
 export const CustomerDetailsContent = ({customer}: {customer: any}) => {
   const {
@@ -52,8 +56,8 @@ export const CustomerDetailsContent = ({customer}: {customer: any}) => {
     current_url: lastSeenUrl,
     ip: lastIpAddress,
     metadata,
+    time_zone,
   } = customer;
-
   return (
     <Box>
       <Box mb={2}>
@@ -80,15 +84,22 @@ export const CustomerDetailsContent = ({customer}: {customer: any}) => {
           <Paragraph>{phone || 'Unknown'}</Paragraph>
         </Box>
       </Flex>
+      <Flex>
+        <Box mb={2} sx={{flex: 1}}>
+          <Box>
+            <Text strong>ID</Text>
+          </Box>
 
-      <Box mb={2}>
-        <Box>
-          <Text strong>ID</Text>
+          <Paragraph>{externalId || 'Unknown'}</Paragraph>
         </Box>
+        <Box mb={2} sx={{flex: 1}}>
+          <Box>
+            <Text strong>Time zone</Text>
+          </Box>
 
-        <Paragraph>{externalId || 'Unknown'}</Paragraph>
-      </Box>
-
+          <Paragraph>{time_zone || 'Unknown'}</Paragraph>
+        </Box>
+      </Flex>
       <Box mb={2}>
         <Box>
           <Text strong>Device information</Text>
@@ -105,7 +116,7 @@ export const CustomerDetailsContent = ({customer}: {customer: any}) => {
         </Box>
 
         {lastSeenUrl ? (
-          <a href="lastSeenUrl" target="_blank" rel="noopener noreferrer">
+          <a href={lastSeenUrl} target="_blank" rel="noopener noreferrer">
             {lastSeenUrl}
           </a>
         ) : (

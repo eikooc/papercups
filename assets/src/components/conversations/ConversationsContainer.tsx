@@ -1,66 +1,25 @@
 import React from 'react';
-import {Link} from 'react-router-dom';
 import {Box, Flex} from 'theme-ui';
-import {
-  Button,
-  colors,
-  Content,
-  Layout,
-  notification,
-  Result,
-  Sider,
-  Text,
-  Title,
-} from '../common';
-import {SmileOutlined} from '../icons';
+import {colors, Layout, notification, Sider, Text, Title} from '../common';
 import {sleep} from '../../utils';
-import Spinner from '../Spinner';
-import ChatMessage from './ChatMessage';
+import {Conversation, Message, User} from '../../types';
 import ConversationHeader from './ConversationHeader';
 import ConversationItem from './ConversationItem';
 import ConversationClosing from './ConversationClosing';
+import ConversationMessages from './ConversationMessages';
 import ConversationFooter from './ConversationFooter';
-
-const EmptyMessagesPlaceholder = () => {
-  return (
-    <Box my={4}>
-      <Result
-        status="success"
-        title="No messages"
-        subTitle="Nothing to show here! Take a well-earned break 😊"
-      />
-    </Box>
-  );
-};
-
-const GettingStartedRedirect = () => {
-  return (
-    <Box my={4}>
-      <Result
-        icon={<SmileOutlined />}
-        title="No messages"
-        subTitle="It looks like your widget hasn't been set up yet!"
-        extra={
-          <Link to="/account/getting-started">
-            <Button type="primary">Get Started</Button>
-          </Link>
-        }
-      />
-      ,
-    </Box>
-  );
-};
+import ConversationDetailsSidebar from './ConversationDetailsSidebar';
 
 type Props = {
   title?: string;
   account: any;
-  currentUser: any;
+  currentUser: User;
   currentlyOnline?: any;
   loading: boolean;
   showGetStarted: boolean;
   conversationIds: Array<string>;
-  conversationsById: {[key: string]: any};
-  messagesByConversation: {[key: string]: any};
+  conversationsById: {[key: string]: Conversation};
+  messagesByConversation: {[key: string]: Array<Message>};
   fetch: () => Promise<Array<string>>;
   onSelectConversation: (id: string | null, fn?: () => void) => void;
   onUpdateConversation: (id: string, params: any) => Promise<void>;
@@ -91,7 +50,7 @@ class ConversationsContainer extends React.Component<Props, State> {
         this.handleSelectConversation(first);
         this.setupKeyboardShortcuts();
       })
-      .then(() => this.scrollToEl.scrollIntoView());
+      .then(() => this.scrollIntoView());
   }
 
   componentWillUnmount() {
@@ -112,7 +71,7 @@ class ConversationsContainer extends React.Component<Props, State> {
     const messages = messagesByConversation[selected] || [];
 
     if (messages.length > prevMessages.length) {
-      this.scrollToEl.scrollIntoView();
+      this.scrollIntoView();
     }
   }
 
@@ -122,6 +81,10 @@ class ConversationsContainer extends React.Component<Props, State> {
 
   removeKeyboardShortcuts = () => {
     window.removeEventListener('keydown', this.handleKeyboardShortcut);
+  };
+
+  scrollIntoView = () => {
+    this.scrollToEl && this.scrollToEl.scrollIntoView();
   };
 
   handleKeyboardShortcut = (e: any) => {
@@ -227,6 +190,10 @@ class ConversationsContainer extends React.Component<Props, State> {
   };
 
   isCustomerOnline = (customerId: string) => {
+    if (!customerId) {
+      return false;
+    }
+
     const {currentlyOnline = {}} = this.props;
     const key = `customer:${customerId}`;
 
@@ -235,7 +202,7 @@ class ConversationsContainer extends React.Component<Props, State> {
 
   handleSelectConversation = (id: string | null) => {
     this.setState({selected: id}, () => {
-      this.scrollToEl.scrollIntoView();
+      this.scrollIntoView();
     });
 
     this.props.onSelectConversation(id);
@@ -317,7 +284,7 @@ class ConversationsContainer extends React.Component<Props, State> {
     }
 
     this.props.onSendMessage(message, conversationId, () => {
-      this.scrollToEl.scrollIntoView();
+      this.scrollIntoView();
     });
   };
 
@@ -346,7 +313,11 @@ class ConversationsContainer extends React.Component<Props, State> {
 
     const loading = this.props.loading || this.state.loading;
     const isClosingSelected =
-      selectedConversationId && closing.indexOf(selectedConversationId) !== -1;
+      !!selectedConversationId &&
+      closing.indexOf(selectedConversationId) !== -1;
+    const isSelectedCustomerOnline = selectedCustomer
+      ? this.isCustomerOnline(selectedCustomer.id)
+      : false;
 
     return (
       <Layout style={{background: colors.white}}>
@@ -422,66 +393,53 @@ class ConversationsContainer extends React.Component<Props, State> {
             onReopenConversation={this.handleReopenConversation}
             onDeleteConversation={this.handleDeleteConversation}
           />
-
-          <Content
-            style={{overflowY: 'scroll', opacity: isClosingSelected ? 0.6 : 1}}
+          <Flex
+            sx={{
+              position: 'relative',
+              flex: 1,
+              flexDirection: 'column',
+              minHeight: 0,
+              minWidth: 640,
+              pr: 240, // TODO: animate this if we make it toggle-able
+            }}
           >
-            {loading ? (
-              <Flex
+            <ConversationMessages
+              messages={messages}
+              currentUser={currentUser}
+              customer={selectedCustomer}
+              loading={loading}
+              isClosing={isClosingSelected}
+              showGetStarted={showGetStarted}
+              setScrollRef={(el) => (this.scrollToEl = el)}
+            />
+
+            {selectedConversation && (
+              // NB: the `key` forces a rerender so the input can clear
+              // any text from the last conversation and trigger autofocus
+              <ConversationFooter
+                key={selectedConversation.id}
+                onSendMessage={this.handleSendMessage}
+              />
+            )}
+
+            {selectedCustomer && selectedConversation && (
+              <Box
                 sx={{
-                  flex: 1,
-                  justifyContent: 'center',
-                  alignItems: 'center',
+                  width: 240,
                   height: '100%',
+                  overflowY: 'scroll',
+                  position: 'absolute',
+                  right: 0,
                 }}
               >
-                <Spinner size={40} />
-              </Flex>
-            ) : (
-              <Box
-                p={4}
-                backgroundColor={colors.white}
-                sx={{minHeight: '100%'}}
-              >
-                {messages.length ? (
-                  messages.map((msg: any, key: number) => {
-                    // Slight hack
-                    const next = messages[key + 1];
-                    const isMe = msg.user_id && msg.user_id === currentUser.id;
-                    const isLastInGroup = next
-                      ? msg.customer_id !== next.customer_id
-                      : true;
-
-                    // TODO: fix `isMe` logic for multiple agents
-                    return (
-                      <ChatMessage
-                        key={key}
-                        message={msg}
-                        customer={selectedCustomer}
-                        isMe={isMe}
-                        isLastInGroup={isLastInGroup}
-                        shouldDisplayTimestamp={isLastInGroup}
-                      />
-                    );
-                  })
-                ) : showGetStarted ? (
-                  <GettingStartedRedirect />
-                ) : (
-                  <EmptyMessagesPlaceholder />
-                )}
-                <div ref={(el) => (this.scrollToEl = el)} />
+                <ConversationDetailsSidebar
+                  customer={selectedCustomer}
+                  isOnline={isSelectedCustomerOnline}
+                  conversation={selectedConversation}
+                />
               </Box>
             )}
-          </Content>
-
-          {selectedConversation && (
-            // NB: the `key` forces a rerender so the input can clear
-            // any text from the last conversation and trigger autofocus
-            <ConversationFooter
-              key={selectedConversation.id}
-              onSendMessage={this.handleSendMessage}
-            />
-          )}
+          </Flex>
         </Layout>
       </Layout>
     );

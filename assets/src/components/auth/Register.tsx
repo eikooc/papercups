@@ -1,6 +1,7 @@
 import React from 'react';
 import {RouteComponentProps, Link} from 'react-router-dom';
 import {Box, Flex} from 'theme-ui';
+import qs from 'query-string';
 import {Button, Input, Text, Title} from '../common';
 import {useAuth} from './AuthProvider';
 import logger from '../../logger';
@@ -16,6 +17,7 @@ type State = {
   password: string;
   passwordConfirmation: string;
   inviteToken?: string;
+  redirect: string;
   error: any;
 };
 
@@ -28,12 +30,15 @@ class Register extends React.Component<Props, State> {
     password: '',
     passwordConfirmation: '',
     inviteToken: '',
+    redirect: '/conversations',
     error: null,
   };
 
   componentDidMount() {
+    const {redirect = '/conversations'} = qs.parse(this.props.location.search);
     const {invite: inviteToken} = this.props.match.params;
-    this.setState({inviteToken});
+
+    this.setState({inviteToken, redirect: String(redirect)});
   }
 
   handleChangeCompanyName = (e: any) => {
@@ -102,6 +107,7 @@ class Register extends React.Component<Props, State> {
       email,
       password,
       passwordConfirmation,
+      redirect,
     } = this.state;
 
     this.props
@@ -112,7 +118,7 @@ class Register extends React.Component<Props, State> {
         password,
         passwordConfirmation,
       })
-      .then(() => this.props.history.push('/conversations'))
+      .then(() => this.props.history.push(redirect))
       .catch((err) => {
         logger.error('Error!', err);
         // TODO: provide more granular error messages?
@@ -124,6 +130,7 @@ class Register extends React.Component<Props, State> {
   };
 
   render() {
+    const {location} = this.props;
     const {
       loading,
       inviteToken,
@@ -221,7 +228,8 @@ class Register extends React.Component<Props, State> {
             )}
 
             <Box mt={error ? 3 : 4}>
-              Already have an account? <Link to="/login">Log in!</Link>
+              Already have an account?{' '}
+              <Link to={`/login${location.search}`}>Log in!</Link>
             </Box>
           </form>
         </Box>

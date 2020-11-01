@@ -12,9 +12,7 @@ import {
 import {colors} from '../common';
 import {FAKE_DATA} from './support';
 
-// TODO: display messages and conversations in this chart with messages broken
-// down by "sent" vs "received" (where "sent" is outbound, "received" is inbound)
-const MessagesSentVsReceivedChart = ({data = FAKE_DATA}: {data: any}) => {
+const MessagesSentVsReceivedChart = ({data = FAKE_DATA}: {data?: any}) => {
   return (
     <ResponsiveContainer>
       <BarChart
@@ -31,7 +29,6 @@ const MessagesSentVsReceivedChart = ({data = FAKE_DATA}: {data: any}) => {
         <Legend />
         <Bar dataKey="sent" stackId="messages" fill={colors.green} />
         <Bar dataKey="received" stackId="messages" fill={colors.primary} />
-        <Bar dataKey="conversations" fill={colors.magenta} />
       </BarChart>
     </ResponsiveContainer>
   );

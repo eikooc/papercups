@@ -5,11 +5,14 @@ import utc from 'dayjs/plugin/utc';
 import {colors, Badge, Text} from '../common';
 import {SmileTwoTone, StarFilled} from '../icons';
 import {formatRelativeTime} from '../../utils';
+import {Conversation, Message} from '../../types';
 
 dayjs.extend(utc);
 
-// TODO: add types!
-const formatConversation = (conversation: any, messages: Array<any> = []) => {
+const formatConversation = (
+  conversation: Conversation,
+  messages: Array<Message> = []
+) => {
   const recent = messages[messages.length - 1];
   const ts = recent ? recent.created_at : conversation.created_at;
   const created = dayjs.utc(ts);
@@ -31,8 +34,8 @@ const ConversationItem = ({
   isCustomerOnline,
   onSelectConversation,
 }: {
-  conversation: Array<any>;
-  messages: Array<any>;
+  conversation: Conversation;
+  messages: Array<Message>;
   color: string;
   isHighlighted?: boolean;
   isCustomerOnline?: boolean;

@@ -12,6 +12,7 @@ defmodule ChatApiWeb.SlackController do
 
   action_fallback ChatApiWeb.FallbackController
 
+  @spec oauth(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def oauth(conn, %{"code" => code}) do
     Logger.info("Code from Slack OAuth: #{inspect(code)}")
 
@@ -60,7 +61,9 @@ defmodule ChatApiWeb.SlackController do
 
         SlackAuthorizations.create_or_update(account_id, params)
 
-        json(conn, %{data: %{ok: true}})
+        conn
+        |> notify_slack()
+        |> json(%{data: %{ok: true}})
       else
         _ ->
           raise "Unrecognized OAuth response"
@@ -70,6 +73,7 @@ defmodule ChatApiWeb.SlackController do
     end
   end
 
+  @spec authorization(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def authorization(conn, _payload) do
     with %{account_id: account_id} <- conn.assigns.current_user do
       auth = SlackAuthorizations.get_authorization_by_account(account_id)
@@ -91,6 +95,7 @@ defmodule ChatApiWeb.SlackController do
     end
   end
 
+  @spec webhook(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def webhook(conn, payload) do
     Logger.debug("Payload from Slack webhook: #{inspect(payload)}")
 
@@ -148,5 +153,18 @@ defmodule ChatApiWeb.SlackController do
       %{conversation: conversation} -> {:ok, conversation}
       _ -> {:error, "Not found"}
     end
+  end
+
+  @spec notify_slack(Conn.t()) :: Conn.t()
+  defp notify_slack(conn) do
+    with %{email: email} <- conn.assigns.current_user do
+      # Putting in an async Task for now, since we don't care if this succeeds
+      # or fails (and we also don't want it to block anything)
+      Task.start(fn ->
+        ChatApi.Slack.log("#{email} successfully linked Slack!")
+      end)
+    end
+
+    conn
   end
 end

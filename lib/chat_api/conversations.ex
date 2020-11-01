@@ -8,8 +8,9 @@ defmodule ChatApi.Conversations do
 
   alias ChatApi.Conversations.Conversation
   alias ChatApi.Messages.Message
-  alias ChatApi.Tags.ConversationTag
+  alias ChatApi.Tags.{Tag, ConversationTag}
 
+  @spec list_conversations() :: [Conversation.t()]
   @doc """
   Returns the list of conversations.
 
@@ -23,6 +24,7 @@ defmodule ChatApi.Conversations do
     Conversation |> Repo.all() |> Repo.preload([:customer, :messages])
   end
 
+  @spec list_conversations_by_account(binary(), map()) :: [Conversation.t()]
   def list_conversations_by_account(nil, _) do
     # TODO: raise an exception if nil account is passed in?
     []
@@ -32,16 +34,19 @@ defmodule ChatApi.Conversations do
     Conversation
     |> where(account_id: ^account_id)
     |> where(^filter_where(params))
+    |> where([c], is_nil(c.archived_at))
     |> order_by(desc: :inserted_at)
     |> preload([:customer, [messages: [user: :profile]]])
     |> Repo.all()
   end
 
+  @spec list_conversations_by_account(binary()) :: [Conversation.t()]
   def list_conversations_by_account(account_id) do
     list_conversations_by_account(account_id, %{})
   end
 
   # Pulled from https://hexdocs.pm/ecto/dynamic-queries.html#building-dynamic-queries
+  @spec filter_where(map) :: Ecto.Query.DynamicExpr.t()
   def filter_where(params) do
     Enum.reduce(params, dynamic(true), fn
       {"status", value}, dynamic ->
@@ -59,18 +64,18 @@ defmodule ChatApi.Conversations do
     end)
   end
 
+  @spec find_by_customer(binary(), binary()) :: [Conversation.t()]
   def find_by_customer(customer_id, account_id) do
-    query =
-      from(c in Conversation,
-        where: c.customer_id == ^customer_id and c.account_id == ^account_id,
-        select: c,
-        order_by: [desc: :inserted_at],
-        preload: [:customer, messages: [user: :profile]]
-      )
-
-    Repo.all(query)
+    Conversation
+    |> where(customer_id: ^customer_id)
+    |> where(account_id: ^account_id)
+    |> where([c], is_nil(c.archived_at))
+    |> order_by(desc: :inserted_at)
+    |> preload([:customer, messages: [user: :profile]])
+    |> Repo.all()
   end
 
+  @spec get_conversation!(binary()) :: Conversation.t()
   @doc """
   Gets a single conversation.
 
@@ -91,18 +96,22 @@ defmodule ChatApi.Conversations do
     |> Repo.preload([:customer, :tags, messages: [user: :profile]])
   end
 
+  @spec get_conversation(binary()) :: Conversation.t() | nil
   def get_conversation(id) do
     Conversation |> Repo.get(id)
   end
 
+  @spec get_conversation_with!(binary(), atom() | list()) :: Conversation.t()
   def get_conversation_with!(id, preloaded) do
     Conversation |> Repo.get!(id) |> Repo.preload(preloaded)
   end
 
+  @spec get_conversation_customer!(binary()) :: Customer.t()
   def get_conversation_customer!(conversation_id) do
     conversation_id |> get_conversation_with!(:customer) |> Map.get(:customer)
   end
 
+  @spec create_conversation(map()) :: {:ok, Conversation.t()} | {:error, Ecto.Changeset.t()}
   @doc """
   Creates a conversation.
 
@@ -121,12 +130,15 @@ defmodule ChatApi.Conversations do
     |> Repo.insert()
   end
 
+  @spec create_test_conversation(map()) :: {:ok, Conversation.t()} | {:error, Ecto.Changeset.t()}
   def create_test_conversation(attrs \\ %{}) do
     %Conversation{}
     |> Conversation.test_changeset(attrs)
     |> Repo.insert()
   end
 
+  @spec update_conversation(Conversation.t(), map()) ::
+          {:ok, Conversation.t()} | {:error, Ecto.Changeset.t()}
   @doc """
   Updates a conversation.
 
@@ -145,6 +157,8 @@ defmodule ChatApi.Conversations do
     |> Repo.update()
   end
 
+  @spec mark_conversation_read(Conversation.t() | binary()) ::
+          {:ok, Conversation.t()} | {:error, Ecto.Changeset.t()}
   def mark_conversation_read(%Conversation{} = conversation) do
     update_conversation(conversation, %{read: true})
   end
@@ -155,6 +169,8 @@ defmodule ChatApi.Conversations do
     mark_conversation_read(conversation)
   end
 
+  @spec mark_conversation_unread(Conversation.t() | binary()) ::
+          {:ok, Conversation.t()} | {:error, Ecto.Changeset.t()}
   def mark_conversation_unread(%Conversation{} = conversation) do
     update_conversation(conversation, %{read: false})
   end
@@ -165,6 +181,7 @@ defmodule ChatApi.Conversations do
     mark_conversation_unread(conversation)
   end
 
+  @spec get_unseen_agent_messages(binary()) :: [Message.t()]
   def get_unseen_agent_messages(conversation_id) do
     Message
     |> where(conversation_id: ^conversation_id)
@@ -173,6 +190,7 @@ defmodule ChatApi.Conversations do
     |> Repo.all()
   end
 
+  @spec mark_agent_messages_as_seen(binary) :: {integer(), nil | [term()]}
   def mark_agent_messages_as_seen(conversation_id) do
     Message
     |> where(conversation_id: ^conversation_id)
@@ -181,6 +199,7 @@ defmodule ChatApi.Conversations do
     |> Repo.update_all(set: [seen_at: DateTime.utc_now()])
   end
 
+  @spec has_unseen_messages?(binary()) :: boolean()
   def has_unseen_messages?(conversation_id) do
     query =
       from(m in Message,
@@ -192,6 +211,33 @@ defmodule ChatApi.Conversations do
     Repo.one(query) > 0
   end
 
+  @spec archive_conversation(Conversation.t() | binary()) ::
+          {:error, Ecto.Changeset.t()} | {:ok, Conversation.t()}
+  def archive_conversation(%Conversation{} = conversation) do
+    update_conversation(conversation, %{archived_at: DateTime.utc_now()})
+  end
+
+  def archive_conversation(conversation_id) do
+    conversation = get_conversation!(conversation_id)
+
+    archive_conversation(conversation)
+  end
+
+  @spec archive_conversations(Ecto.Query.t()) :: {number, nil}
+  def archive_conversations(%Ecto.Query{} = query) do
+    Repo.update_all(query, set: [archived_at: DateTime.utc_now()])
+  end
+
+  @spec query_conversations_closed_for([{:days, number | Decimal.t()}, ...]) :: Ecto.Query.t()
+  def query_conversations_closed_for(days: days) do
+    Conversation
+    |> where([c], is_nil(c.archived_at))
+    |> where(status: "closed")
+    |> where([c], c.updated_at < ago(^days, "day"))
+  end
+
+  @spec delete_conversation(Conversation.t()) ::
+          {:ok, Conversation.t()} | {:error, Ecto.Changeset.t()}
   @doc """
   Deletes a conversation.
 
@@ -208,6 +254,7 @@ defmodule ChatApi.Conversations do
     Repo.delete(conversation)
   end
 
+  @spec change_conversation(Conversation.t(), map) :: Ecto.Changeset.t()
   @doc """
   Returns an `%Ecto.Changeset{}` for tracking conversation changes.
 
@@ -221,6 +268,7 @@ defmodule ChatApi.Conversations do
     Conversation.changeset(conversation, attrs)
   end
 
+  @spec list_tags(binary()) :: [Tag.t()]
   def list_tags(id) do
     # TODO: optimize this query
     Conversation
@@ -231,12 +279,15 @@ defmodule ChatApi.Conversations do
     end
   end
 
+  @spec get_tag(Conversation.t(), binary()) :: ConversationTag.t() | nil
   def get_tag(%Conversation{id: id, account_id: account_id} = _conversation, tag_id) do
     ConversationTag
     |> where(account_id: ^account_id, conversation_id: ^id, tag_id: ^tag_id)
     |> Repo.one()
   end
 
+  @spec add_tag(Conversation.t(), binary()) ::
+          {:ok, ConversationTag.t()} | {:error, Ecto.Changeset.t()}
   def add_tag(%Conversation{id: id, account_id: account_id} = conversation, tag_id) do
     case get_tag(conversation, tag_id) do
       nil ->
@@ -253,6 +304,8 @@ defmodule ChatApi.Conversations do
     end
   end
 
+  @spec remove_tag(Conversation.t(), binary()) ::
+          {:ok, Conversation.t()} | {:error, Ecto.Changeset.t()}
   def remove_tag(%Conversation{} = conversation, tag_id) do
     conversation
     |> get_tag(tag_id)

@@ -1,10 +1,12 @@
 import React from 'react';
 import {Box, Flex} from 'theme-ui';
-import {colors, Button, Footer, TextArea} from '../common';
+import {colors, Button, TextArea} from '../common';
 
 const ConversationFooter = ({
+  sx = {},
   onSendMessage,
 }: {
+  sx?: any;
   onSendMessage: (message: string) => void;
 }) => {
   const [message, setMessage] = React.useState('');
@@ -27,8 +29,8 @@ const ConversationFooter = ({
   };
 
   return (
-    <Footer style={{padding: 0}}>
-      <Box px={4} pt={0} pb={4} backgroundColor={colors.white}>
+    <Box style={{flex: '0 0 auto'}}>
+      <Box sx={{bg: colors.white, px: 4, pt: 0, pb: 4, ...sx}}>
         <Box
           p={2}
           sx={{
@@ -57,7 +59,7 @@ const ConversationFooter = ({
           </form>
         </Box>
       </Box>
-    </Footer>
+    </Box>
   );
 };
 

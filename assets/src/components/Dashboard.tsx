@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useEffect, useState} from 'react';
 import {
   useLocation,
   Switch,
@@ -9,15 +9,22 @@ import {
 } from 'react-router-dom';
 import {Helmet} from 'react-helmet';
 import {Box, Flex} from 'theme-ui';
+import {ChatWidget, Papercups} from '@papercups-io/chat-widget';
+// import {Storytime} from '../lib/storytime'; // For testing
+import {Storytime} from '@papercups-io/storytime';
 import {colors, Badge, Layout, Menu, Sider} from './common';
 import {
   ApiOutlined,
   MailOutlined,
   UserOutlined,
+  LineChartOutlined,
   LogoutOutlined,
   CreditCardOutlined,
+  SmileOutlined,
   TeamOutlined,
+  VideoCameraOutlined,
 } from './icons';
+import {BASE_URL, isDev} from '../config';
 import {useAuth} from './auth/AuthProvider';
 import AccountOverview from './account/AccountOverview';
 import UserProfile from './account/UserProfile';
@@ -33,34 +40,87 @@ import ClosedConversations from './conversations/ClosedConversations';
 import IntegrationsOverview from './integrations/IntegrationsOverview';
 import BillingOverview from './billing/BillingOverview';
 import CustomersPage from './customers/CustomersPage';
+import SessionsOverview from './sessions/SessionsOverview';
+import InstallingStorytime from './sessions/InstallingStorytime';
+import LiveSessionViewer from './sessions/LiveSessionViewer';
 import ReportingDashboard from './reporting/ReportingDashboard';
 
+const {
+  REACT_APP_STRIPE_PUBLIC_KEY,
+  REACT_APP_STORYTIME_ENABLED,
+  REACT_APP_ADMIN_ACCOUNT_ID = 'eb504736-0f20-4978-98ff-1a82ae60b266',
+} = process.env;
+
+const TITLE_FLASH_INTERVAL = 2000;
+
 const hasValidStripeKey = () => {
-  const key = process.env.REACT_APP_STRIPE_PUBLIC_KEY;
+  const key = REACT_APP_STRIPE_PUBLIC_KEY;
 
   return key && key.startsWith('pk_');
+};
+
+const shouldDisplayChat = (pathname: string) => {
+  if (pathname === '/account/getting-started') {
+    return false;
+  }
+
+  return true;
 };
 
 const Dashboard = (props: RouteComponentProps) => {
   const auth = useAuth();
   const {pathname} = useLocation();
-  const {unreadByCategory: unread} = useConversations();
+  const {currentUser, unreadByCategory: unread} = useConversations();
+  const [htmlTitle, setHtmlTitle] = useState('Papercups');
+
   const [section, key] = pathname.split('/').slice(1); // Slice off initial slash
   const totalNumUnread = (unread && unread.all) || 0;
   const shouldDisplayBilling = hasValidStripeKey();
 
   const logout = () => auth.logout().then(() => props.history.push('/login'));
 
+  const toggleNotificationMessage = () => {
+    if (totalNumUnread > 0 && htmlTitle.startsWith('Papercups')) {
+      setHtmlTitle(
+        `(${totalNumUnread}) New message${totalNumUnread === 1 ? '' : 's'}!`
+      );
+    } else {
+      setHtmlTitle('Papercups');
+    }
+  };
+
+  useEffect(() => {
+    if (REACT_APP_STORYTIME_ENABLED && currentUser) {
+      const {id, email} = currentUser;
+      // TODO: figure out a better way to initialize this?
+      const storytime = Storytime.init({
+        accountId: REACT_APP_ADMIN_ACCOUNT_ID,
+        baseUrl: BASE_URL,
+        debug: isDev,
+        customer: {
+          email,
+          external_id: id,
+        },
+      });
+
+      return () => storytime.finish();
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    let timeout;
+
+    if (totalNumUnread > 0) {
+      timeout = setTimeout(toggleNotificationMessage, TITLE_FLASH_INTERVAL);
+    } else {
+      clearTimeout(timeout);
+    }
+  });
+
   return (
     <Layout>
-      <Helmet>
-        <title>
-          {totalNumUnread
-            ? `(${totalNumUnread}) New message${
-                totalNumUnread === 1 ? '' : 's'
-              }!`
-            : 'Papercups'}
-        </title>
+      <Helmet defer={false}>
+        <title>{totalNumUnread ? htmlTitle : 'Papercups'}</title>
       </Helmet>
 
       <Sider
@@ -78,7 +138,7 @@ const Dashboard = (props: RouteComponentProps) => {
           <Box py={3} sx={{flex: 1}}>
             <Menu
               selectedKeys={[section, key]}
-              defaultOpenKeys={[section, 'account', 'conversations']}
+              defaultOpenKeys={[section, 'conversations']}
               mode="inline"
               theme="dark"
             >
@@ -154,12 +214,31 @@ const Dashboard = (props: RouteComponentProps) => {
                   <Link to="/conversations/closed">Closed</Link>
                 </Menu.Item>
               </Menu.SubMenu>
+              <Menu.SubMenu
+                key="sessions"
+                icon={<VideoCameraOutlined />}
+                title="Sessions"
+              >
+                <Menu.Item key="list">
+                  <Link to="/sessions/list">Live sessions</Link>
+                </Menu.Item>
+                <Menu.Item key="setup">
+                  <Link to="/sessions/setup">Set up Storytime</Link>
+                </Menu.Item>
+              </Menu.SubMenu>
               <Menu.Item
                 title="Customers"
                 icon={<TeamOutlined />}
                 key="customers"
               >
                 <Link to="/customers">Customers</Link>
+              </Menu.Item>
+              <Menu.Item
+                title="Reporting"
+                icon={<LineChartOutlined />}
+                key="reporting"
+              >
+                <Link to="/reporting">Reporting</Link>
               </Menu.Item>
               <Menu.Item
                 title="Integrations"
@@ -181,7 +260,17 @@ const Dashboard = (props: RouteComponentProps) => {
           </Box>
 
           <Box py={3}>
-            <Menu mode="inline" theme="dark">
+            <Menu mode="inline" theme="dark" selectable={false}>
+              {shouldDisplayChat(pathname) && (
+                <Menu.Item
+                  title="Chat with us!"
+                  icon={<SmileOutlined />}
+                  key="chat"
+                  onClick={Papercups.toggle}
+                >
+                  Chat with us!
+                </Menu.Item>
+              )}
               <Menu.Item
                 title="Log out"
                 icon={<LogoutOutlined />}
@@ -219,9 +308,28 @@ const Dashboard = (props: RouteComponentProps) => {
             <Route path="/billing" component={BillingOverview} />
           )}
           <Route path="/reporting" component={ReportingDashboard} />
+          <Route path="/sessions/live/:session" component={LiveSessionViewer} />
+          <Route path="/sessions/list" component={SessionsOverview} />
+          <Route path="/sessions/setup" component={InstallingStorytime} />
+          <Route path="/sessions*" component={SessionsOverview} />
           <Route path="*" render={() => <Redirect to="/conversations/all" />} />
         </Switch>
       </Layout>
+
+      {currentUser && (
+        <ChatWidget
+          title="Need help with anything?"
+          subtitle="Ask us in the chat window below 😊"
+          greeting="Hi there! Send us a message and we'll get back to you as soon as we can."
+          primaryColor="#1890ff"
+          accountId="eb504736-0f20-4978-98ff-1a82ae60b266"
+          hideToggleButton
+          customer={{
+            external_id: currentUser.id,
+            email: currentUser.email,
+          }}
+        />
+      )}
     </Layout>
   );
 };
